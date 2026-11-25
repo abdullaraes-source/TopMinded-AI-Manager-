@@ -7,6 +7,9 @@ on:
       - 'TopMinded_AI_Manager_Source_v2.zip'
       - '.github/workflows/build.yml'
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -22,37 +25,69 @@ jobs:
           java-version: '17'
 
       - name: Android SDK sozlash
-        run: |
-          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
-          echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "/usr/local/lib/android/sdk/platform-tools" >> $GITHUB_PATH
+        uses: android-actions/setup-android@v3
 
-      - name: SDK litsenziyalarini qabul qilish
+      - name: Android litsenziyalarini qabul qilish
         run: |
           yes | sdkmanager --licenses || true
 
-      - name: Kerakli Android paketlarini o'rnatish
+      - name: Android SDK paketlarini o'rnatish
         run: |
           sdkmanager "platform-tools"
           sdkmanager "platforms;android-35"
-          sdkmanager "build-tools;35.0.0"
+          sdkmanager "platforms;android-36"
 
-      - name: Gradle o'rnatish
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
+      - name: ZIP faylni tekshirish
+        run: |
+          test -f TopMinded_AI_Manager_Source_v2.zip
 
-      - name: Source ZIPni ochish
+      - name: Source fayllarni ochish
         run: |
           mkdir -p source
           unzip -o TopMinded_AI_Manager_Source_v2.zip -d source
 
+      - name: Android loyiha joyini topish
+        run: |
+          PROJECT=$(find source -type f \
+            \( -name settings.gradle -o -name settings.gradle.kts \) \
+            -print -quit)
+
+          if [ -z "$PROJECT" ]; then
+            echo "settings.gradle topilmadi!"
+            find source -maxdepth 4 -type f
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$PROJECT")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+
+          echo "Loyiha joyi: $PROJECT_DIR"
+          ls -la "$PROJECT_DIR"
+
+      - name: Gradle versiyasini sozlash
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
       - name: APK qurish
         run: |
-          gradle -p source/android assembleDebug
+          cd "$PROJECT_DIR"
 
-      - name: APKni saqlash
+          if [ -f gradlew ]; then
+            chmod +x gradlew
+            ./gradlew assembleDebug --stacktrace
+          else
+            gradle assembleDebug --stacktrace
+          fi
+
+      - name: APK faylini tekshirish
+        run: |
+          find source -type f -name "*.apk"
+
+      - name: APKni yuklab olish uchun saqlash
         uses: actions/upload-artifact@v4
         with:
           name: TopMinded-APK
-          path: source/android/app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            source/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
