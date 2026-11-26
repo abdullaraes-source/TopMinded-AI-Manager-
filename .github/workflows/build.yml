@@ -18,53 +18,69 @@ jobs:
       - name: Kodni yuklash
         uses: actions/checkout@v4
 
-      - name: Java 17 o'rnatish
+      - name: Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Android SDK sozlash
-        uses: android-actions/setup-android@v3
-
-      - name: Android litsenziyalarini qabul qilish
+      - name: Android SDK yo'lini sozlash
         run: |
-          yes | sdkmanager --licenses || true
+          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> $GITHUB_ENV
+          echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "/usr/local/lib/android/sdk/platform-tools" >> $GITHUB_PATH
 
-      - name: Android SDK paketlarini o'rnatish
+      - name: SDK manager topish
         run: |
-          sdkmanager "platform-tools"
-          sdkmanager "platforms;android-35"
-          sdkmanager "platforms;android-36"
+          SDKMANAGER=$(find /usr/local/lib/android/sdk \
+            -name sdkmanager -type f | head -n 1)
 
-      - name: ZIP faylni tekshirish
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager topilmadi"
+            exit 1
+          fi
+
+          echo "SDKMANAGER=$SDKMANAGER" >> $GITHUB_ENV
+          echo "Topildi: $SDKMANAGER"
+
+      - name: Litsenziyalarni qabul qilish
         run: |
+          yes | "$SDKMANAGER" --licenses || true
+
+      - name: Android paketlarini o'rnatish
+        run: |
+          "$SDKMANAGER" --install \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: ZIPni tekshirish
+        run: |
+          ls -lh
           test -f TopMinded_AI_Manager_Source_v2.zip
 
-      - name: Source fayllarni ochish
+      - name: ZIPni ochish
         run: |
           mkdir -p source
           unzip -o TopMinded_AI_Manager_Source_v2.zip -d source
 
-      - name: Android loyiha joyini topish
+      - name: Android loyihasini topish
         run: |
-          PROJECT=$(find source -type f \
-            \( -name settings.gradle -o -name settings.gradle.kts \) \
-            -print -quit)
+          FILE=$(find source -name settings.gradle \
+            -o -name settings.gradle.kts | head -n 1)
 
-          if [ -z "$PROJECT" ]; then
-            echo "settings.gradle topilmadi!"
-            find source -maxdepth 4 -type f
+          if [ -z "$FILE" ]; then
+            echo "Android loyiha topilmadi"
+            find source -maxdepth 5 -type f
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$PROJECT")
-          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+          DIR=$(dirname "$FILE")
+          echo "PROJECT_DIR=$DIR" >> $GITHUB_ENV
+          echo "Loyiha: $DIR"
 
-          echo "Loyiha joyi: $PROJECT_DIR"
-          ls -la "$PROJECT_DIR"
-
-      - name: Gradle versiyasini sozlash
+      - name: Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
@@ -80,14 +96,14 @@ jobs:
             gradle assembleDebug --stacktrace
           fi
 
-      - name: APK faylini tekshirish
+      - name: APK mavjudligini tekshirish
         run: |
-          find source -type f -name "*.apk"
+          find source -name "*.apk"
+          test -n "$(find source -name '*.apk')"
 
-      - name: APKni yuklab olish uchun saqlash
+      - name: APKni saqlash
         uses: actions/upload-artifact@v4
         with:
           name: TopMinded-APK
-          path: |
-            source/**/build/outputs/apk/debug/*.apk
+          path: source/**/build/outputs/apk/debug/*.apk
           if-no-files-found: error
